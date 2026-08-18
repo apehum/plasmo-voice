@@ -112,15 +112,11 @@ jobs:
     - name: Build ${{ matrix.variant }} with Gradle
       run: ./gradlew ":client:${{ matrix.variant }}:build" --stacktrace -Psnapshot=true -Ppv.mac.helperZip="$GITHUB_WORKSPACE/build/mic-helper/PVMicHelper.zip"
 
-    - name: Determine artifact name
-      id: artifact
-      run: echo "name=$(basename build/libs/*.jar .jar)" >> "$GITHUB_OUTPUT"
-
     - name: Upload build artifact
       uses: actions/upload-artifact@v7.0.1
       with:
-        name: ${{ steps.artifact.outputs.name }}
         path: build/libs/*.jar
+        archive: false
         retention-days: 7
 
   build-server-proxy:
@@ -157,15 +153,11 @@ jobs:
     - name: Build ${{ matrix.target }} with Gradle
       run: ./gradlew ":${{ matrix.target }}:build" --stacktrace -Psnapshot=true
 
-    - name: Determine artifact name
-      id: artifact
-      run: echo "name=$(basename build/libs/*.jar .jar)" >> "$GITHUB_OUTPUT"
-
     - name: Upload build artifact
       uses: actions/upload-artifact@v7.0.1
       with:
-        name: ${{ steps.artifact.outputs.name }}
         path: build/libs/*.jar
+        archive: false
         retention-days: 7
 
   build:
