@@ -109,11 +109,60 @@ jobs:
     - name: Build ${{ matrix.variant }} with Gradle
       run: ./gradlew ":client:${{ matrix.variant }}:build" --stacktrace -Psnapshot=true -Ppv.mac.helperZip="$GITHUB_WORKSPACE/build/mic-helper/PVMicHelper.zip"
 
-    - name: Upload build artifacts
+    - name: Determine artifact name
+      id: artifact
+      run: echo "name=$(basename build/libs/*.jar .jar)" >> "$GITHUB_OUTPUT"
+
+    - name: Upload build artifact
       uses: actions/upload-artifact@v7.0.1
       with:
-        name: jars-client-${{ matrix.variant }}
-        path: build/libs/
+        name: ${{ steps.artifact.outputs.name }}
+        path: build/libs/*.jar
+        retention-days: 7
+
+  build-server-proxy:
+    needs: discover
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - server:paper
+          - proxy:velocity
+          - proxy:bungee
+
+    steps:
+    - uses: actions/checkout@v7.0.0
+    - name: Set up JDK
+      uses: actions/setup-java@v5.7.0
+      with:
+        distribution: temurin
+        java-version: |
+          8
+          16
+          17
+          21
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v6.3.0
+      with:
+        cache-read-only: false
+
+    - name: Build ${{ matrix.target }} with Gradle
+      run: ./gradlew ":${{ matrix.target }}:build" --stacktrace -Psnapshot=true
+
+    - name: Determine artifact name
+      id: artifact
+      run: echo "name=$(basename build/libs/*.jar .jar)" >> "$GITHUB_OUTPUT"
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: build/libs/*.jar
         retention-days: 7
 
   build:
@@ -179,13 +228,6 @@ jobs:
         MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
       run: ./gradlew publish --stacktrace -Psnapshot=true
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v7.0.1
-      with:
-        name: jars-server-proxy
-        path: build/libs/
-        retention-days: 7
-
     - name: Restore previous doc versions
       if: ${{ steps.release-check.outputs.released != 'true' }}
       run: |
@@ -224,23 +266,8 @@ jobs:
         force_orphan: false
         cname: dokka.plasmovoice.com
 
-  merge:
-    needs: [build-client, build]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-    - name: Merge build artifacts
-      uses: actions/upload-artifact/merge@v4
-      with:
-        name: build-libs
-        pattern: jars-*
-        delete-merged: true
-        retention-days: 7
-
   registry-upload:
-    needs: merge
+    needs: [build-client, build-server-proxy, build]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -249,8 +276,8 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v8.0.1
       with:
-        name: build-libs
         path: build/libs/
+        merge-multiple: true
 
     - name: Upload to Registry
       uses: plasmoapp/actions/.github/actions/upload-to-registry@main
