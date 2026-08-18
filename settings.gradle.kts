@@ -28,6 +28,7 @@ pluginManagement {
 
 plugins {
     id("su.plo.voice.client-projects")
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
 rootProject.name = "PlasmoVoice"
