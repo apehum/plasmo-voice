@@ -66,5 +66,6 @@ file("proxy").listFilesOrdered {
 }
 
 // macOS microphone helper
+include("macos:protocol")
 include("macos:helper")
 include("macos:probe")
