@@ -43,19 +43,21 @@ file("api").listFilesOrdered {
 // Common
 include("common")
 
-include("client")
-project(":client").apply {
-    projectDir = file("client/")
-    buildFileName = "root.gradle.kts"
-}
+if (providers.gradleProperty("project.client.disable").getOrElse("false") != "true") {
+    include("client")
+    project(":client").apply {
+        projectDir = file("client/")
+        buildFileName = "root.gradle.kts"
+    }
 
-file("client").listFilesOrdered {
-    return@listFilesOrdered it.isDirectory && it.name.contains("-")
-}.forEach {
-    include("client:${it.name}")
-    project(":client:${it.name}").apply {
-        projectDir = file("client/${it.name}")
-        buildFileName = "../build.gradle.kts"
+    file("client").listFilesOrdered {
+        return@listFilesOrdered it.isDirectory && it.name.contains("-")
+    }.forEach {
+        include("client:${it.name}")
+        project(":client:${it.name}").apply {
+            projectDir = file("client/${it.name}")
+            buildFileName = "../build.gradle.kts"
+        }
     }
 }
 

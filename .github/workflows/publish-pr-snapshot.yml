@@ -56,7 +56,7 @@ jobs:
         echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
 
     - name: Build the microphone helper
-      run: ./gradlew :macos:helper:bundleZip --stacktrace -Psnapshot=true -Ppv.mac.signIdentity="${{ steps.signing.outputs.identity }}"
+      run: ./gradlew :macos:helper:bundleZip --stacktrace -Pproject.client.disable=true -Psnapshot=true -Ppv.mac.signIdentity="${{ steps.signing.outputs.identity }}"
 
     - name: Upload the bundle
       uses: actions/upload-artifact@v4
@@ -154,7 +154,7 @@ jobs:
         cache-read-only: false
 
     - name: Build ${{ matrix.target }} with Gradle
-      run: ./gradlew ":${{ matrix.target }}:build" --stacktrace -Psnapshot=true
+      run: ./gradlew ":${{ matrix.target }}:build" --stacktrace -Pproject.client.disable=true -Psnapshot=true
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v7.0.1
@@ -189,8 +189,4 @@ jobs:
 
     - name: Build with Gradle (everything except client)
       run: |
-        excludes=()
-        for variant in $(echo '${{ needs.discover.outputs.client-variants }}' | jq -r '.[]'); do
-          excludes+=("-x" ":client:${variant}:build")
-        done
-        ./gradlew build "${excludes[@]}" --stacktrace -Psnapshot=true
+        ./gradlew build --stacktrace -Pproject.client.disable=true -Psnapshot=true
