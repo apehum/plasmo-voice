@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import org.gradle.kotlin.dsl.support.listFilesOrdered
 
 pluginManagement {
@@ -30,6 +31,13 @@ plugins {
 
 rootProject.name = "PlasmoVoice"
 
+data class ClientVersionEntry(val project: String, val parent: String?)
+
+@Suppress("UNCHECKED_CAST")
+fun clientVersionEntries(file: File): List<ClientVersionEntry> =
+    (JsonSlurper().parse(file) as List<Map<String, Any?>>)
+        .map { ClientVersionEntry(it["project"] as String, it["parent"] as String?) }
+
 // Protocol
 include("protocol")
 
@@ -50,12 +58,27 @@ if (providers.gradleProperty("project.client.disable").getOrElse("false") != "tr
         buildFileName = "root.gradle.kts"
     }
 
-    file("client").listFilesOrdered {
-        return@listFilesOrdered it.isDirectory && it.name.contains("-")
-    }.forEach {
-        include("client:${it.name}")
-        project(":client:${it.name}").apply {
-            projectDir = file("client/${it.name}")
+    val clientParents = clientVersionEntries(file("client/versions.json"))
+        .associate { it.project to it.parent }
+
+    val requestedClient = providers.gradleProperty("project.client.only").orNull
+    val clientVersions = if (requestedClient == null) {
+        clientParents.keys
+    } else {
+        val requested = requestedClient.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        require(requested.isNotEmpty()) { "`project.client.only` does not name any client version" }
+        requested.flatMap { version ->
+            require(version in clientParents) {
+                "unknown client version `$version`, expected one of ${clientParents.keys.sorted()}"
+            }
+            generateSequence(version) { clientParents[it] }.toList()
+        }.toSet()
+    }
+
+    clientVersions.forEach {
+        include("client:$it")
+        project(":client:$it").apply {
+            projectDir = file("client/$it")
             buildFileName = "../build.gradle.kts"
         }
     }

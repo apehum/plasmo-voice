@@ -75,7 +75,7 @@ jobs:
     - name: List client variants
       id: list
       run: |
-        variants=$(find client -mindepth 1 -maxdepth 1 -type d -name '*-*' -printf '%f\n' | sort | jq -R -s -c 'split("\n")[:-1]')
+        variants=$(jq -c 'map(.project)' client/versions.json)
         echo "variants=$variants" >> "$GITHUB_OUTPUT"
 
   build-client:
@@ -113,7 +113,7 @@ jobs:
         path: build/mic-helper
 
     - name: Build ${{ matrix.variant }} with Gradle
-      run: ./gradlew ":client:${{ matrix.variant }}:build" --stacktrace -Psnapshot=true -Ppv.mac.helperZip="$GITHUB_WORKSPACE/build/mic-helper/PVMicHelper.zip"
+      run: ./gradlew ":client:${{ matrix.variant }}:build" --stacktrace -Pproject.client.only=${{ matrix.variant }} -Psnapshot=true -Ppv.mac.helperZip="$GITHUB_WORKSPACE/build/mic-helper/PVMicHelper.zip"
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v7.0.1
