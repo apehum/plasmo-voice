@@ -261,6 +261,7 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v8.0.1
       with:
+        pattern: '*.jar'
         path: build/libs/
         merge-multiple: true
 
@@ -341,6 +342,7 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v8.0.1
       with:
+        pattern: '*.jar'
         path: build/libs/
         merge-multiple: true
 
@@ -372,6 +374,7 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v8.0.1
       with:
+        pattern: '*.jar'
         path: build/libs/
         merge-multiple: true
 
