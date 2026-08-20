@@ -1,6 +1,9 @@
 name: Publish PR Snapshot
 
 on:
+  push:
+    branches:
+      - '**/**'
   pull_request:
     types:
       - synchronize
@@ -191,25 +194,3 @@ jobs:
           excludes+=("-x" ":client:${variant}:build")
         done
         ./gradlew build "${excludes[@]}" --stacktrace -Psnapshot=true
-
-  registry-upload:
-    needs: [build-client, build-server-proxy, build]
-    if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-    - name: Download build artifacts
-      uses: actions/download-artifact@v8.0.1
-      with:
-        pattern: '*.jar'
-        path: build/libs/
-        merge-multiple: true
-
-    - name: Upload to Registry
-      uses: plasmoapp/actions/.github/actions/upload-to-registry@main
-      with:
-        registry_url: ${{ secrets.REGISTRY_URL }}
-        upload_token: ${{ secrets.REGISTRY_UPLOAD_TOKEN }}
-        message: ${{ github.event.head_commit.message }}
