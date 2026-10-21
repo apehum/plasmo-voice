@@ -19,6 +19,7 @@ import su.plo.voice.api.event.EventSubscribe;
 import su.plo.voice.client.audio.device.InputBackendsKt;
 import su.plo.voice.client.audio.device.mac.CoreAudioInputDeviceFactory;
 import su.plo.voice.client.audio.device.mac.CoreAudioInputDeviceFactoryKt;
+import su.plo.voice.client.audio.device.mac.LauncherMicrophone;
 import su.plo.voice.client.audio.device.mac.MicrophonePermissionException;
 import su.plo.voice.client.config.VoiceClientConfig;
 import su.plo.voice.client.gui.settings.MicrophoneTestController;
@@ -377,8 +378,15 @@ public final class DevicesTabWidget extends TabWidget {
                 && ((CoreAudioInputDeviceFactory) factory).getLastError() != null;
     }
 
+    private boolean isLauncherMicrophoneRefused() {
+        return devices.getInputDeviceError().orElse(null) instanceof MicrophonePermissionException
+                && LauncherMicrophone.getRefusal() != null;
+    }
+
     private AuthStatus macMicrophonePermissionStatus() {
         if (!Platform.isMac()) return null;
+
+        if (isLauncherMicrophoneRefused()) return LauncherMicrophone.getRefusal();
 
         DeviceFactory factory = deviceFactories.getDeviceFactory(CoreAudioInputDeviceFactoryKt.COREAUDIO_INPUT).orElse(null);
         if (!(factory instanceof CoreAudioInputDeviceFactory)) return null;
@@ -390,6 +398,11 @@ public final class DevicesTabWidget extends TabWidget {
     }
 
     private void resolveMacMicrophonePermission() {
+        if (isLauncherMicrophoneRefused()) {
+            LauncherMicrophone.resolve(() -> Minecraft.getInstance().execute(this::reloadInputDevice));
+            return;
+        }
+
         DeviceFactory factory = deviceFactories.getDeviceFactory(CoreAudioInputDeviceFactoryKt.COREAUDIO_INPUT).orElse(null);
         if (!(factory instanceof CoreAudioInputDeviceFactory)) {
             MinecraftUtil.openUri("https://plasmovoice.com/docs/client/microphone-not-available");
