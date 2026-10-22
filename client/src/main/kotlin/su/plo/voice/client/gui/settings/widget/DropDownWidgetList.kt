@@ -46,7 +46,7 @@ class DropDownWidgetList(
             context.stack.translate(0.0, 0.0, 10.0)
             //#endif
 
-            super.render(context, mouseX, mouseY, delta)
+            super.render(context, parent.mouseX, parent.mouseY, delta)
 
             if (maxScroll > 0) {
                 val lineY = if (shouldRenderToTop()) y0 else y1
@@ -61,8 +61,7 @@ class DropDownWidgetList(
             }
 
             //#if MC<12106
-            context.stack.pushPose()
-            context.stack.translate(0.0, 0.0, 10.0)
+            context.stack.popPose()
             //#endif
         }
     }

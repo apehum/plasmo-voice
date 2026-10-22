@@ -3,6 +3,7 @@ package su.plo.voice.client.gui.settings;
 import com.mojang.blaze3d.platform.InputConstants;
 import kotlin.text.StringsKt;
 import su.plo.lib.mod.client.gui.TooltipData;
+import su.plo.lib.mod.client.gui.components.AbstractSlider;
 import su.plo.lib.mod.client.render.Colors;
 import su.plo.lib.mod.client.render.gui.GuiRenderContext;
 import su.plo.slib.api.chat.component.McTextComponent;
@@ -64,6 +65,13 @@ public final class VoiceSettingsScreen extends GuiScreen implements GuiWidgetLis
     private int renderCount;
 
     private final List<Runnable> deferredRenders = new ArrayList<>();
+
+    @Getter
+    private @Nullable GuiWidgetListener overlay;
+    @Getter
+    private int mouseX;
+    @Getter
+    private int mouseY;
 
     public VoiceSettingsScreen(@NotNull BaseVoiceClient voiceClient) {
         this.voiceClient = voiceClient;
@@ -183,6 +191,13 @@ public final class VoiceSettingsScreen extends GuiScreen implements GuiWidgetLis
     public void render(@NotNull GuiRenderContext context, int mouseX, int mouseY, float delta) {
         if (renderCount < 5) renderCount++;
         this.tooltip = null;
+        this.mouseX = mouseX;
+        this.mouseY = mouseY;
+
+        if (overlay != null || isSliderDragging()) {
+            mouseX = -1;
+            mouseY = -1;
+        }
 
         //#if MC<12105
         RenderSystem.defaultBlendFunc();
@@ -276,6 +291,17 @@ public final class VoiceSettingsScreen extends GuiScreen implements GuiWidgetLis
 
     public void deferredRender(@NotNull Runnable render) {
         deferredRenders.add(render);
+    }
+
+    public void setOverlay(@Nullable GuiWidgetListener overlay) {
+        this.overlay = overlay;
+    }
+
+    private boolean isSliderDragging() {
+        return navigation.getActiveTab()
+                .map(TabWidget::getFocusedWidget)
+                .filter(widget -> widget instanceof AbstractSlider && ((AbstractSlider) widget).isDragging())
+                .isPresent();
     }
 
     private McTextComponent getSettingsTitle() {
