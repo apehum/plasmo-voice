@@ -1,0 +1,103 @@
+name: macOS microphone
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.case.name }})
+    runs-on: macos-15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - { name: usage-fresh-allow, launcher: usage, launcher_mic: fresh, helper_mic: fresh, answer: allow, expect: javax, helper: false }
+          - { name: usage-fresh-deny, launcher: usage, launcher_mic: fresh, helper_mic: fresh, answer: deny, expect: denied, helper: false }
+          - { name: usage-allowed, launcher: usage, launcher_mic: allowed, helper_mic: fresh, answer: none, expect: javax, helper: false }
+          - { name: usage-denied, launcher: usage, launcher_mic: denied, helper_mic: fresh, answer: none, expect: denied, helper: false }
+          - { name: no-usage-fresh-allow, launcher: no-usage, launcher_mic: fresh, helper_mic: fresh, answer: allow, expect: coreaudio, helper: true }
+          - { name: no-usage-fresh-deny, launcher: no-usage, launcher_mic: fresh, helper_mic: fresh, answer: deny, expect: denied, helper: true }
+          - { name: no-usage-helper-allowed, launcher: no-usage, launcher_mic: fresh, helper_mic: allowed, answer: none, expect: coreaudio, helper: true }
+          - { name: hardened-fresh-allow, launcher: hardened, launcher_mic: fresh, helper_mic: fresh, answer: allow, expect: coreaudio, helper: true }
+    env:
+      MC_VERSION: "26.3"
+
+    steps:
+    - uses: actions/checkout@v7.0.1
+
+    - name: Set up JDK
+      uses: actions/setup-java@v5.7.0
+      with:
+        distribution: temurin
+        java-version: 25
+
+    - name: Download the Fabric jar
+      uses: actions/download-artifact@v8.0.1
+      with:
+        pattern: plasmovoice-fabric-${{ env.MC_VERSION }}-*
+        path: ${{ runner.temp }}/pv-jar
+        merge-multiple: true
+
+    - name: Restore game downloads
+      id: game-cache
+      uses: actions/cache/restore@v6.1.0
+      with:
+        path: |
+          ${{ runner.temp }}/pv-test/game
+          ${{ runner.temp }}/pv-test/server/libraries
+          ${{ runner.temp }}/pv-test/server/versions
+          ${{ runner.temp }}/pv-test/server/.fabric
+        key: macos-mic-game-${{ runner.arch }}-${{ env.MC_VERSION }}
+
+    - name: Install the virtual microphone
+      run: |
+        brew install --cask blackhole-2ch
+        brew install sox switchaudio-osx
+        sudo killall coreaudiod || true
+        sleep 3
+        sw_vers
+        system_profiler SPAudioDataType
+
+    - name: Prepare the server and the stand-in launcher
+      id: prepare
+      run: .github/scripts/macos-mic/prepare.sh "$MC_VERSION" "${{ matrix.case.launcher }}" "$RUNNER_TEMP/pv-jar"
+
+    - name: Run
+      env:
+        CASE_NAME: ${{ matrix.case.name }}
+        CASE_LAUNCHER_MIC: ${{ matrix.case.launcher_mic }}
+        CASE_HELPER_MIC: ${{ matrix.case.helper_mic }}
+        CASE_ANSWER: ${{ matrix.case.answer }}
+        CASE_EXPECT: ${{ matrix.case.expect }}
+        CASE_HELPER: ${{ matrix.case.helper }}
+      run: .github/scripts/macos-mic/run-case.sh
+
+    # Every case races for the same key, the losers' saves only warn
+    - name: Save game downloads
+      if: always() && steps.game-cache.outputs.cache-hit != 'true' && steps.prepare.outcome == 'success'
+      continue-on-error: true
+      uses: actions/cache/save@v6.1.0
+      with:
+        path: |
+          ${{ runner.temp }}/pv-test/game
+          ${{ runner.temp }}/pv-test/server/libraries
+          ${{ runner.temp }}/pv-test/server/versions
+          ${{ runner.temp }}/pv-test/server/.fabric
+        key: macos-mic-game-${{ runner.arch }}-${{ env.MC_VERSION }}
+
+    - name: Collect logs
+      if: always()
+      run: .github/scripts/macos-mic/collect-logs.sh
+
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: macos-mic-${{ matrix.case.name }}
+        path: ${{ runner.temp }}/logs
+        retention-days: 7
+        if-no-files-found: ignore
