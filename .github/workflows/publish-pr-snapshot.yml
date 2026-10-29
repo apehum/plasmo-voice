@@ -19,6 +19,12 @@ jobs:
     with:
       snapshot: true
 
+  macos-mic:
+    needs: build
+    uses: ./.github/workflows/macos-mic.yml
+    permissions:
+      contents: read
+
   build-rest:
     runs-on: ubuntu-latest
     permissions:
