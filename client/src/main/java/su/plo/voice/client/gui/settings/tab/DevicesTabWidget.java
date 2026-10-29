@@ -7,6 +7,8 @@ import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.NotNull;
 import su.plo.lib.mod.client.MinecraftUtil;
 import su.plo.lib.mod.client.ResourceLocationUtil;
+import su.plo.lib.mod.client.gui.components.CompositeColumnWidget;
+import su.plo.lib.mod.client.gui.components.CompositeRowWidget;
 import su.plo.lib.mod.client.gui.components.IconButton;
 import su.plo.voice.client.gui.GuiUtil;
 import su.plo.slib.api.chat.component.McTextComponent;
@@ -16,19 +18,25 @@ import su.plo.voice.api.client.audio.device.*;
 import su.plo.voice.api.client.event.audio.device.DeviceClosedEvent;
 import su.plo.voice.api.client.event.audio.device.DeviceOpenEvent;
 import su.plo.voice.api.event.EventSubscribe;
+import su.plo.voice.client.audio.device.InputBackendsKt;
+import su.plo.voice.client.audio.device.VoiceDeviceManager;
+import su.plo.voice.client.audio.device.mac.CoreAudioInputDeviceFactory;
+import su.plo.voice.client.audio.device.mac.CoreAudioInputDeviceFactoryKt;
+import su.plo.voice.client.audio.device.mac.LauncherMicrophone;
+import su.plo.voice.client.audio.device.mac.MicrophonePermissionException;
 import su.plo.voice.client.config.VoiceClientConfig;
 import su.plo.voice.client.gui.settings.MicrophoneTestController;
 import su.plo.voice.client.gui.settings.VoiceSettingsScreen;
 import su.plo.voice.client.gui.settings.widget.ActivationThresholdWidget;
-import su.plo.voice.client.gui.settings.widget.CompositeRowWidget;
 import su.plo.voice.client.gui.settings.widget.DropDownWidget;
+import su.plo.voice.client.gui.settings.widget.OptionWidget;
 import su.plo.voice.client.gui.settings.widget.ToggleButton;
-import su.plo.voice.client.mac.AVAuthorizationStatus;
-import su.plo.voice.client.mac.AVCaptureDevice;
+import su.plo.voice.mac.protocol.message.status.AuthStatus;
 
 import su.plo.lib.mod.client.render.Colors;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 public final class DevicesTabWidget extends TabWidget {
@@ -36,6 +44,7 @@ public final class DevicesTabWidget extends TabWidget {
     private final MicrophoneTestController testController;
     private final DeviceManager devices;
     private final DeviceFactoryManager deviceFactories;
+    private final AtomicBoolean resolvingMacPermission = new AtomicBoolean(false);
 
     private ActivationThresholdWidget threshold;
 
@@ -54,22 +63,22 @@ public final class DevicesTabWidget extends TabWidget {
     public void init() {
         super.init();
 
-        addEntry(new CategoryEntry(McTextComponent.translatable("gui.plasmovoice.devices.microphone")));
-        addEntry(createThresholdEntry());
-        addEntry(createMicrophoneEntry());
-        addEntry(createVolumeSlider(
+        CompositeColumnWidget microphone = addCategory(McTextComponent.translatable("gui.plasmovoice.devices.microphone"));
+        microphone.add(createThresholdEntry());
+        microphone.add(createMicrophoneEntry());
+        microphone.add(createVolumeSlider(
                 McTextComponent.translatable("gui.plasmovoice.devices.microphone_volume"),
                 McTextComponent.translatable("gui.plasmovoice.devices.volume.tooltip"),
                 config.getVoice().getMicrophoneVolume(),
                 "%"
         ));
-        addEntry(createToggleEntry(
+        microphone.add(createToggleEntry(
                 McTextComponent.translatable("gui.plasmovoice.devices.noise_suppression"),
                 McTextComponent.translatable("gui.plasmovoice.devices.noise_suppression.tooltip"),
                 config.getVoice().getNoiseSuppression()
         ));
-        addEntry(createStereoCaptureEntry());
-        addEntry(createToggleEntry(
+        microphone.add(createStereoCaptureEntry());
+        microphone.add(createToggleEntry(
                 McTextComponent.translatable("gui.plasmovoice.devices.disable_input_device"),
                 McTextComponent.translatable("gui.plasmovoice.devices.disable_input_device.tooltip"),
                 config.getVoice().getDisableInputDevice(),
@@ -82,9 +91,9 @@ public final class DevicesTabWidget extends TabWidget {
                 }
         ));
 
-        addEntry(new CategoryEntry(McTextComponent.translatable("gui.plasmovoice.devices.output")));
-        addEntry(createOutputDeviceEntry());
-        addEntry(createVolumeSlider(
+        CompositeColumnWidget output = addCategory(McTextComponent.translatable("gui.plasmovoice.devices.output"));
+        output.add(createOutputDeviceEntry());
+        output.add(createVolumeSlider(
                 McTextComponent.translatable("gui.plasmovoice.devices.volume"),
                 McTextComponent.translatable("gui.plasmovoice.devices.volume.tooltip"),
                 config.getVoice().getVolume(),
@@ -95,17 +104,17 @@ public final class DevicesTabWidget extends TabWidget {
 //                "gui.plasmovoice.devices.compressor.tooltip",
 //                config.getVoice().getCompressorLimiter()
 //        ));
-        addEntry(createToggleEntry(
+        output.add(createToggleEntry(
                 McTextComponent.translatable("gui.plasmovoice.devices.occlusion"),
                 McTextComponent.translatable("gui.plasmovoice.devices.occlusion.tooltip"),
                 config.getVoice().getSoundOcclusion()
         ));
-        addEntry(createToggleEntry(
+        output.add(createToggleEntry(
                 McTextComponent.translatable("gui.plasmovoice.devices.directional_sources"),
                 McTextComponent.translatable("gui.plasmovoice.devices.directional_sources.tooltip"),
                 config.getVoice().getDirectionalSources()
         ));
-        addEntry(createHrtfEntry());
+        output.add(createHrtfEntry());
     }
 
     @EventSubscribe
@@ -118,7 +127,7 @@ public final class DevicesTabWidget extends TabWidget {
         Minecraft.getInstance().execute(this::init);
     }
 
-    private ButtonOptionEntry<ActivationThresholdWidget> createThresholdEntry() {
+    private OptionWidget<ActivationThresholdWidget> createThresholdEntry() {
         if (threshold != null) voiceClient.getEventBus().unregister(voiceClient, threshold);
         this.threshold = new ActivationThresholdWidget(
                 parent,
@@ -133,72 +142,64 @@ public final class DevicesTabWidget extends TabWidget {
         );
         voiceClient.getEventBus().register(voiceClient, threshold);
 
-        return new ButtonOptionEntry<>(
+        return new OptionWidget<>(
+                parent,
                 McTextComponent.translatable("gui.plasmovoice.devices.activation_threshold"),
                 threshold,
-                threshold.getButtons(),
                 config.getVoice().getActivationThreshold(),
                 McTextComponent.translatable("gui.plasmovoice.devices.activation_threshold.tooltip"),
-                null
+                null,
+                threshold.getButtons()
         );
     }
 
-    private OptionEntry<CompositeRowWidget> createMicrophoneEntry() {
-        Optional<DeviceFactory> deviceFactory;
-
-        if (config.getVoice().getUseJavaxInput().value()) {
-            deviceFactory = deviceFactories.getDeviceFactory("JAVAX_INPUT");
-            if (!deviceFactory.isPresent())
-                throw new IllegalStateException("Javax Input device factory not initialized");
-        } else {
-            deviceFactory = deviceFactories.getDeviceFactory("AL_INPUT");
-            if (!deviceFactory.isPresent()) throw new IllegalStateException("Al Input device factory not initialized");
-        }
+    private OptionWidget<CompositeRowWidget> createMicrophoneEntry() {
+        Optional<DeviceFactory> deviceFactory = Optional.of(
+                InputBackendsKt.inputFactory(deviceFactories, config.getVoice())
+        );
 
         ImmutableList<String> inputDeviceNames = deviceFactory.get().getDeviceNames();
         Optional<InputDevice> inputDevice = this.devices.getInputDevice();
 
         IconButton inputNotAvailable = null;
-        if (devices.getInputDeviceError().isPresent()) {
+        if (devices.getInputDeviceError().isPresent() || hasMacMicrophoneError()) {
             inputNotAvailable = new IconButton(
                     0,
                     0,
                     20,
                     20,
-                    button -> MinecraftUtil.openUri("https://plasmovoice.com/docs/client/microphone-not-available"),
-                    (button, mouseX, mouseY) -> {
+                    button -> {
                         if (Platform.isMac()) {
-                            AVAuthorizationStatus authorizationStatus = AVCaptureDevice.INSTANCE.getAuthorizationStatus();
-                            if (authorizationStatus == AVAuthorizationStatus.RESTRICTED) {
-                                parent.setTooltip(
-                                        McTextComponent.translatable(
-                                                "message.plasmovoice.macos_incompatible_launcher",
-                                                McTextComponent.literal("Prism Launcher")
-                                        ),
-                                        mouseX,
-                                        mouseY
-                                );
-                                return;
-                            }
+                            resolveMacMicrophonePermission();
+                        } else {
+                            MinecraftUtil.openUri("https://plasmovoice.com/docs/client/microphone-not-available");
+                        }
+                    },
+                    (button, mouseX, mouseY) -> {
+                        AuthStatus macPermission = macMicrophonePermissionStatus();
+
+                        McTextComponent tooltip;
+                        if (macPermission != null) {
+                            tooltip = McTextComponent.translatable(
+                                    "gui.plasmovoice.devices.mac_microphone_permission_denied.tooltip"
+                            );
+                        } else {
+                            String configInputDevice = config.getVoice().getInputDevice().value();
+
+                            McTextComponent currentDeviceName = GuiUtil.formatDeviceName(
+                                    configInputDevice.isEmpty()
+                                            ? deviceFactory.get().getDefaultDeviceName()
+                                            : configInputDevice,
+                                    deviceFactory.get()
+                            );
+
+                            tooltip = McTextComponent.translatable(
+                                    "gui.plasmovoice.devices.failed_to_initialize_microphone.tooltip",
+                                    currentDeviceName
+                            );
                         }
 
-                        String configInputDevice = config.getVoice().getInputDevice().value();
-
-                        McTextComponent currentDeviceName = GuiUtil.formatDeviceName(
-                                configInputDevice.isEmpty()
-                                        ? deviceFactory.get().getDefaultDeviceName()
-                                        : configInputDevice,
-                                deviceFactory.get()
-                        );
-
-                        parent.setTooltip(
-                                McTextComponent.translatable(
-                                        "gui.plasmovoice.devices.failed_to_initialize_microphone.tooltip",
-                                        currentDeviceName
-                                ),
-                                mouseX,
-                                mouseY
-                        );
+                        parent.setTooltip(tooltip, mouseX, mouseY);
                     },
                     ResourceLocationUtil.mod("textures/icons/warning.png"),
                     false
@@ -230,19 +231,18 @@ public final class DevicesTabWidget extends TabWidget {
         dropdown.setActive(!inputDeviceNames.isEmpty() && !config.getVoice().getDisableInputDevice().value());
 
         CompositeRowWidget row = new CompositeRowWidget(
-                0,
-                0,
+                ELEMENT_GAP,
                 ELEMENT_WIDTH,
-                20,
-                4,
                 dropdown,
                 inputNotAvailable
         );
 
-        return new OptionEntry<>(
+        return new OptionWidget<>(
+                parent,
                 McTextComponent.translatable("gui.plasmovoice.devices.microphone"),
                 row,
                 config.getVoice().getInputDevice(),
+                null,
                 (button, element) -> {
                     dropdown.setText(GuiUtil.formatDeviceName((String) null, deviceFactory.get()));
                     reloadInputDevice();
@@ -250,7 +250,7 @@ public final class DevicesTabWidget extends TabWidget {
         );
     }
 
-    private OptionEntry<ToggleButton> createStereoCaptureEntry() {
+    private OptionWidget<ToggleButton> createStereoCaptureEntry() {
         Runnable onUpdate = () -> {
             reloadInputDevice();
             testController.restart();
@@ -265,7 +265,8 @@ public final class DevicesTabWidget extends TabWidget {
                 (toggled) -> onUpdate.run()
         );
 
-        return new OptionEntry<>(
+        return new OptionWidget<>(
+                parent,
                 McTextComponent.translatable("gui.plasmovoice.devices.stereo_capture"),
                 toggleButton,
                 config.getVoice().getStereoCapture(),
@@ -274,7 +275,7 @@ public final class DevicesTabWidget extends TabWidget {
         );
     }
 
-    private OptionEntry<DropDownWidget> createOutputDeviceEntry() {
+    private OptionWidget<DropDownWidget> createOutputDeviceEntry() {
         Optional<DeviceFactory> deviceFactory = deviceFactories.getDeviceFactory("AL_OUTPUT");
         if (!deviceFactory.isPresent()) throw new IllegalStateException("Al Output device factory not initialized");
 
@@ -305,10 +306,12 @@ public final class DevicesTabWidget extends TabWidget {
 
         dropdown.setActive(!outputDeviceNames.isEmpty());
 
-        return new OptionEntry<>(
+        return new OptionWidget<>(
+                parent,
                 McTextComponent.translatable("gui.plasmovoice.devices.output_device"),
                 dropdown,
                 config.getVoice().getOutputDevice(),
+                null,
                 (button, element) -> {
                     element.setText(GuiUtil.formatDeviceName((String) null, deviceFactory.get()));
                     reloadOutputDevice();
@@ -316,7 +319,7 @@ public final class DevicesTabWidget extends TabWidget {
         );
     }
 
-    private OptionEntry<ToggleButton> createHrtfEntry() {
+    private OptionWidget<ToggleButton> createHrtfEntry() {
         Consumer<Boolean> onUpdate = (toggled) -> {
             devices.getOutputDevice().ifPresent(device -> {
                 try {
@@ -337,7 +340,8 @@ public final class DevicesTabWidget extends TabWidget {
                 onUpdate::accept
         );
 
-        return new OptionEntry<>(
+        return new OptionWidget<>(
+                parent,
                 McTextComponent.translatable("gui.plasmovoice.devices.hrtf"),
                 toggleButton,
                 config.getVoice().getHrtf(),
@@ -360,16 +364,64 @@ public final class DevicesTabWidget extends TabWidget {
     }
 
     private void reloadInputDevice() {
-        if (config.getVoice().getDisableInputDevice().value()) return;
+        ((VoiceDeviceManager) devices).reloadInputDevice()
+                .whenComplete((ignored, e) -> Minecraft.getInstance().execute(this::init));
+    }
 
-        try {
-            devices.getInputDevice().ifPresent(InputDevice::close);
-            InputDevice newDevice = devices.openInputDevice(null);
-            devices.setInputDevice(newDevice);
+    private boolean hasMacMicrophoneError() {
+        if (!Platform.isMac()) return false;
 
-            Minecraft.getInstance().execute(this::init);
-        } catch (Exception e) {
-            BaseVoice.LOGGER.error("Failed to open input device", e);
+        DeviceFactory factory = deviceFactories.getDeviceFactory(CoreAudioInputDeviceFactoryKt.COREAUDIO_INPUT).orElse(null);
+        return factory instanceof CoreAudioInputDeviceFactory
+                && ((CoreAudioInputDeviceFactory) factory).getLastError() != null;
+    }
+
+    private boolean isLauncherMicrophoneRefused() {
+        return devices.getInputDeviceError().orElse(null) instanceof MicrophonePermissionException
+                && LauncherMicrophone.getRefusal() != null;
+    }
+
+    private AuthStatus macMicrophonePermissionStatus() {
+        if (!Platform.isMac()) return null;
+
+        if (isLauncherMicrophoneRefused()) return LauncherMicrophone.getRefusal();
+
+        DeviceFactory factory = deviceFactories.getDeviceFactory(CoreAudioInputDeviceFactoryKt.COREAUDIO_INPUT).orElse(null);
+        if (!(factory instanceof CoreAudioInputDeviceFactory)) return null;
+
+        Throwable lastError = ((CoreAudioInputDeviceFactory) factory).getLastError();
+        return lastError instanceof MicrophonePermissionException
+                ? ((MicrophonePermissionException) lastError).getStatus()
+                : null;
+    }
+
+    private void resolveMacMicrophonePermission() {
+        if (isLauncherMicrophoneRefused()) {
+            LauncherMicrophone.resolve(() -> Minecraft.getInstance().execute(this::reloadInputDevice));
+            return;
         }
+
+        DeviceFactory factory = deviceFactories.getDeviceFactory(CoreAudioInputDeviceFactoryKt.COREAUDIO_INPUT).orElse(null);
+        if (!(factory instanceof CoreAudioInputDeviceFactory)) {
+            MinecraftUtil.openUri("https://plasmovoice.com/docs/client/microphone-not-available");
+            return;
+        }
+
+        if (!resolvingMacPermission.compareAndSet(false, true)) return;
+
+        CoreAudioInputDeviceFactory coreAudio = (CoreAudioInputDeviceFactory) factory;
+        Thread thread = new Thread(() -> {
+            try {
+                if (coreAudio.resolvePermission() == AuthStatus.AUTHORIZED) {
+                    Minecraft.getInstance().execute(this::reloadInputDevice);
+                }
+            } catch (Exception e) {
+                BaseVoice.LOGGER.error("Failed to resolve the macOS microphone permission", e);
+            } finally {
+                resolvingMacPermission.set(false);
+            }
+        }, "Plasmo Voice Permission");
+        thread.setDaemon(true);
+        thread.start();
     }
 }

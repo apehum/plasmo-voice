@@ -1,23 +1,22 @@
 package su.plo.lib.mod.client.gui.components;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import lombok.Getter;
 import net.minecraft.util.Mth;
 import su.plo.lib.mod.client.gui.widget.GuiWidgetTexture;
 import org.jetbrains.annotations.NotNull;
 import su.plo.lib.mod.client.gui.widget.GuiAbstractWidget;
 import su.plo.lib.mod.client.render.Colors;
 import su.plo.lib.mod.client.render.RenderUtil;
+import su.plo.lib.mod.client.render.gui.GuiCursor;
 import su.plo.lib.mod.client.render.gui.GuiRenderContext;
 
 import java.awt.Color;
 
-//#if MC>=12109
-//$$ import com.mojang.blaze3d.platform.cursor.CursorTypes;
-//#endif
-
 public abstract class AbstractSlider extends GuiAbstractWidget {
 
     protected double value;
+    @Getter
     protected boolean dragging;
 
     public AbstractSlider(int x, int y, int width, int height) {
@@ -31,13 +30,16 @@ public abstract class AbstractSlider extends GuiAbstractWidget {
 
     @Override
     public void render(@NotNull GuiRenderContext context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
+        if (!visible) return;
 
-        //#if MC>=12109
-        //$$ if (isHovered()) {
-        //$$     context.requestCursor(dragging ? CursorTypes.RESIZE_EW : CursorTypes.POINTING_HAND);
-        //$$ }
-        //#endif
+        this.hovered = dragging || isHovered(mouseX, mouseY);
+        renderButton(context, mouseX, mouseY, delta);
+
+        if (dragging) {
+            context.requestCursor(GuiCursor.RESIZE_EW);
+        } else if (hovered) {
+            context.requestCursor(GuiCursor.POINTING_HAND);
+        }
     }
 
     @Override
@@ -52,8 +54,7 @@ public abstract class AbstractSlider extends GuiAbstractWidget {
         int width = getSliderWidth();
         GuiWidgetTexture sprite = getButtonTexture(isHoveredOrFocused());
 
-        context.blitSprite(sprite, x, y, 0, 0, width / 2, height);
-        context.blitSprite(sprite, x + width / 2, y, sprite.getSpriteWidth() - width / 2, 0, width / 2, height);
+        context.blitSprite(sprite, x, y, width, height);
     }
 
     @Override
@@ -83,9 +84,8 @@ public abstract class AbstractSlider extends GuiAbstractWidget {
 
     @Override
     public void onDrag(double mouseX, double mouseY, double deltaX, double deltaY) {
-        if (isHovered(mouseX, mouseY)) {
+        if (dragging) {
             setValueFromMouse(mouseX);
-            this.dragging = true;
             super.onDrag(mouseX, mouseY, deltaX, deltaY);
         }
     }
@@ -107,7 +107,7 @@ public abstract class AbstractSlider extends GuiAbstractWidget {
 
         GuiWidgetTexture sprite = isHoveredOrFocused() ? GuiWidgetTexture.SLIDER_HANDLE_ACTIVE : GuiWidgetTexture.SLIDER_HANDLE;
 
-        context.blitSprite(sprite, x0, y, 0, 0, 8, 20);
+        context.blitSprite(sprite, x0, y, 8, 20);
     }
 
     @Override

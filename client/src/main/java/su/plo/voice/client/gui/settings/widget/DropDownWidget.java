@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import su.plo.lib.mod.client.gui.widget.GuiAbstractWidget;
 import su.plo.lib.mod.client.render.Colors;
 import su.plo.lib.mod.client.render.RenderUtil;
+import su.plo.lib.mod.client.render.gui.GuiCursor;
 import su.plo.lib.mod.client.render.gui.GuiRenderContext;
 import su.plo.slib.api.chat.component.McTextComponent;
 import su.plo.voice.client.gui.settings.VoiceSettingsScreen;
@@ -14,12 +15,9 @@ import java.util.function.Consumer;
 
 import su.plo.lib.mod.client.gui.widget.GuiWidgetTexture;
 
-//#if MC>=12109
-//$$ import com.mojang.blaze3d.platform.cursor.CursorTypes;
-//#endif
-
 public final class DropDownWidget extends GuiAbstractWidget {
 
+    private final VoiceSettingsScreen parent;
     private final DropDownWidgetList list;
 
     private boolean open;
@@ -37,11 +35,11 @@ public final class DropDownWidget extends GuiAbstractWidget {
     ) {
         super(x, y, width, height, message);
 
+        this.parent = parent;
         this.list = new DropDownWidgetList(
                 this,
                 elements,
                 parent,
-                width,
                 tooltip,
                 index -> {
                     this.text = elements.get(index);
@@ -71,6 +69,12 @@ public final class DropDownWidget extends GuiAbstractWidget {
     }
 
     @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        return open && list.mouseReleased(mouseX, mouseY, button) ||
+                super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         return open && list.mouseDragged(mouseX, mouseY, button, deltaX, deltaY) ||
                 super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
@@ -78,7 +82,7 @@ public final class DropDownWidget extends GuiAbstractWidget {
 
     @Override
     public boolean keyPressed(int keyCode, int modifiers) {
-        if (!active || !visible) return false;
+        if (!active || !visible || !isFocused()) return false;
 
         if (keyCode != InputConstants.KEY_RETURN && keyCode != InputConstants.KEY_SPACE && keyCode != InputConstants.KEY_NUMPADENTER) return false;
 
@@ -102,16 +106,19 @@ public final class DropDownWidget extends GuiAbstractWidget {
     }
 
     @Override
+    public boolean capturesInput() {
+        return open;
+    }
+
+    @Override
     public void renderButton(@NotNull GuiRenderContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context, mouseX, mouseY);
         renderArrow(context);
         renderText(context);
 
-        //#if MC>=12109
-        //$$ if (isMouseOver(mouseX, mouseY)) {
-        //$$     context.requestCursor(isActive() ? CursorTypes.POINTING_HAND : CursorTypes.NOT_ALLOWED);
-        //$$ }
-        //#endif
+        if (isMouseOver(mouseX, mouseY)) {
+            context.requestCursor(isActive() ? GuiCursor.POINTING_HAND : GuiCursor.NOT_ALLOWED);
+        }
 
         if (!open) return;
 
@@ -122,8 +129,7 @@ public final class DropDownWidget extends GuiAbstractWidget {
     protected void renderBackground(@NotNull GuiRenderContext context, int mouseX, int mouseY) {
         GuiWidgetTexture sprite = isFocused() ? GuiWidgetTexture.TEXT_FIELD_ACTIVE : GuiWidgetTexture.TEXT_FIELD;
 
-        context.blitSprite(sprite, x, y, 0, 0, width / 2, height);
-        context.blitSprite(sprite, x + width / 2, y, sprite.getSpriteWidth() - width / 2, 0, width / 2, height);
+        context.blitSprite(sprite, x, y, width, height);
     }
 
     @Override
@@ -140,8 +146,10 @@ public final class DropDownWidget extends GuiAbstractWidget {
         if (open) {
             this.open = false;
             list.setScrollTop(0.0D);
+            if (parent.getOverlay() == list) parent.setOverlay(null);
         } else {
             this.open = true;
+            parent.setOverlay(list);
         }
     }
 
