@@ -34,6 +34,12 @@ esac
 
 seen() { grep -qE "$1" "$2" 2>/dev/null; }
 
+blackhole_rms() {
+  sox -q -t coreaudio "BlackHole 2ch" -n trim 0 2 stat 2>&1 | tee "$1" | awk '/RMS +amplitude/ { print $3 }'
+}
+
+tone_re='synth 3600 sine 440'
+
 # auth_value 0 is denied, 2 allowed
 set_mic() {
   sqlite3 "$user_db" "insert or replace into access
@@ -90,8 +96,13 @@ fi
 
 # BlackHole loops its output back into its input, so the tone is what every backend reads as the microphone
 SwitchAudioSource -t input -s "BlackHole 2ch" >"$logs/audio-setup.log" 2>&1
-nohup sox -q -n -t coreaudio "BlackHole 2ch" synth 3600 sine 440 vol 0.5 </dev/null >"$logs/tone.log" 2>&1 &
-tone=$!
+# Some runs end with BlackHole silent, which looks the same as PV capturing nothing, so the tone's exit is logged
+(
+  sox -q -V3 -n -t coreaudio "BlackHole 2ch" $tone_re vol 0.5 </dev/null
+  echo "$(date +%T) sox exited with $?"
+) >"$logs/tone.log" 2>&1 &
+sleep 2
+start_rms=$(blackhole_rms "$logs/blackhole-level-start.txt")
 # PV's UDP shares the server port: voice is ~50 packets/s, keepalives ~1/s
 sudo -n tcpdump -i lo0 -n -l -tt 'udp and dst port 25565' </dev/null >"$logs/udp.log" 2>"$logs/tcpdump.err" &
 
@@ -156,15 +167,19 @@ done
 screencapture -x "$logs/screens/$(date +%H%M%S)-final.png" 2>/dev/null
 
 # Independent of PV: whether the tone was still reaching BlackHole's input at the end
-tone_rms=$(sox -q -t coreaudio "BlackHole 2ch" -n trim 0 2 stat 2>&1 | tee "$logs/blackhole-level.txt" \
-  | awk '/RMS +amplitude/ { print $3 }')
+tone_rms=$(blackhole_rms "$logs/blackhole-level-end.txt")
+tone_state=$(ps -ax -o pid,stat,etime,%cpu,command | grep -E "[s]ox .*$tone_re")
+tone_state=${tone_state:-"not running: $(grep -m1 'sox exited' "$logs/tone.log" || echo 'no exit logged')"}
+echo "$(date +%T) at the end: $tone_state" >>"$logs/tone.log"
+system_profiler SPAudioDataType >"$logs/audio-devices-end.txt" 2>&1
 # What each client thread was blocked on, for runs that stall behind a prompt
 for pid in $(pgrep -f KnotClient); do
   "$(dirname "$java")/jcmd" "$pid" Thread.print >"$logs/client-threads-$pid.txt" 2>&1 || true
 done
 tcc_dump >"$logs/tcc-after.txt"
 
-kill "$stream" "$answerer" "$tone" 2>/dev/null
+kill "$stream" "$answerer" 2>/dev/null
+pkill -f "$tone_re" 2>/dev/null
 sudo -n pkill tcpdump 2>/dev/null
 pkill -f "$work" 2>/dev/null
 kill "$server_pid" 2>/dev/null
@@ -212,7 +227,11 @@ pv_lines=$(grep -nE 'LauncherMicrophone|HelperSupervisor|CoreAudioInputDevice|Ja
   printf '%s\n' "${rows[@]}"
   echo
   echo "- Busiest 10 s: $peak client-to-server packets (voice is ~500, keepalives ~10)"
-  echo "- Tone at BlackHole's input at the end: RMS ${tone_rms:-unknown} (a 0.5 sine is ~0.35)"
+  echo "- Tone at BlackHole's input: RMS ${start_rms:-unknown} before the launch, ${tone_rms:-unknown} at the end (a 0.5 sine is ~0.35)"
+  echo "- Tone process at the end: $tone_state"
+  if [[ -n "$tone_rms" ]] && awk -v rms="$tone_rms" 'BEGIN { exit !(rms < 0.01) }'; then
+    echo "- **BlackHole was silent at the end, so a missing voice says nothing about PV**"
+  fi
   echo "- Launcher signature: $(codesign -dv "$app" 2>&1 | grep -E '^(Signature|CodeDirectory)' | tr '\n' ';' | sed 's/;$//')"
   clicks=$(tr '\n' ';' 2>/dev/null <"$logs/prompt-answers.log" | sed 's/;$//')
   echo "- Prompts clicked: ${clicks:-none}"
