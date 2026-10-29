@@ -38,7 +38,17 @@ blackhole_rms() {
   sox -q -t coreaudio "BlackHole 2ch" -n trim 0 2 stat 2>&1 | tee "$1" | awk '/RMS +amplitude/ { print $3 }'
 }
 
+silent() { [[ -z "$1" ]] || awk -v rms="$1" 'BEGIN { exit !(rms < 0.01) }'; }
+
 tone_re='synth 3600 sine 440'
+
+start_tone() {
+  (
+    sox -q -V3 -n -t coreaudio "BlackHole 2ch" $tone_re vol 0.5 </dev/null
+    echo "$(date +%T) sox exited with $?"
+  ) >>"$logs/tone.log" 2>&1 &
+  sleep 2
+}
 
 # auth_value 0 is denied, 2 allowed
 set_mic() {
@@ -96,13 +106,29 @@ fi
 
 # BlackHole loops its output back into its input, so the tone is what every backend reads as the microphone
 SwitchAudioSource -t input -s "BlackHole 2ch" >"$logs/audio-setup.log" 2>&1
-# Some runs end with BlackHole silent, which looks the same as PV capturing nothing, so the tone's exit is logged
-(
-  sox -q -V3 -n -t coreaudio "BlackHole 2ch" $tone_re vol 0.5 </dev/null
-  echo "$(date +%T) sox exited with $?"
-) >"$logs/tone.log" 2>&1 &
-sleep 2
+# On some runners the tone's sox keeps running but nothing reaches BlackHole, so every reader, PV included,
+# gets silence. Restart it, then coreaudiod, before blaming PV for a quiet mic
+: >"$logs/tone.log"
+start_tone
 start_rms=$(blackhole_rms "$logs/blackhole-level-start.txt")
+tone_restarts=0
+while silent "$start_rms"; do
+  if (( tone_restarts == 2 )); then
+    echo "::error::BlackHole stayed silent after restarting the tone and coreaudiod, so this run can't test PV"
+    exit 1
+  fi
+  sample "$(pgrep -f "$tone_re" | head -1)" 1 -file "$logs/tone-stuck-$tone_restarts.txt" >/dev/null 2>&1
+  pkill -9 -f "$tone_re"
+  if (( tone_restarts == 1 )); then
+    sudo -n killall coreaudiod
+    sleep 3
+    SwitchAudioSource -t input -s "BlackHole 2ch" >>"$logs/audio-setup.log" 2>&1
+  fi
+  tone_restarts=$((tone_restarts + 1))
+  echo "$(date +%T) BlackHole silent, restart $tone_restarts" >>"$logs/tone.log"
+  start_tone
+  start_rms=$(blackhole_rms "$logs/blackhole-level-start-$tone_restarts.txt")
+done
 # PV's UDP shares the server port: voice is ~50 packets/s, keepalives ~1/s
 sudo -n tcpdump -i lo0 -n -l -tt 'udp and dst port 25565' </dev/null >"$logs/udp.log" 2>"$logs/tcpdump.err" &
 
@@ -227,9 +253,9 @@ pv_lines=$(grep -nE 'LauncherMicrophone|HelperSupervisor|CoreAudioInputDevice|Ja
   printf '%s\n' "${rows[@]}"
   echo
   echo "- Busiest 10 s: $peak client-to-server packets (voice is ~500, keepalives ~10)"
-  echo "- Tone at BlackHole's input: RMS ${start_rms:-unknown} before the launch, ${tone_rms:-unknown} at the end (a 0.5 sine is ~0.35)"
+  echo "- Tone at BlackHole's input: RMS ${start_rms:-unknown} before the launch (after $tone_restarts restarts), ${tone_rms:-unknown} at the end (a 0.5 sine is ~0.35)"
   echo "- Tone process at the end: $tone_state"
-  if [[ -n "$tone_rms" ]] && awk -v rms="$tone_rms" 'BEGIN { exit !(rms < 0.01) }'; then
+  if silent "$tone_rms"; then
     echo "- **BlackHole was silent at the end, so a missing voice says nothing about PV**"
   fi
   echo "- Launcher signature: $(codesign -dv "$app" 2>&1 | grep -E '^(Signature|CodeDirectory)' | tr '\n' ';' | sed 's/;$//')"
