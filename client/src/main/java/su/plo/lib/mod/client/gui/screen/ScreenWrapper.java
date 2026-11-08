@@ -16,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 import su.plo.lib.mod.client.render.RenderUtil;
 import su.plo.voice.client.ModVoiceClient;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,7 +26,6 @@ import java.util.Optional;
 //#endif
 
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.locale.Language;
 
 @ToString
 public final class ScreenWrapper
@@ -120,52 +118,28 @@ public final class ScreenWrapper
         screen.removed();
     }
 
-    //#if MC>=12106
-    //$$ @Override
-    //$$ public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
-    //#if MC<12105
-    //$$     RenderUtil.preserveGlState();
-    //#endif
-    //$$     lastMouseX = mouseX;
-    //$$     lastMouseY = mouseY;
-    //$$     lastPartialTicks = partialTicks;
-    //$$     GuiRenderContext context = new GuiRenderContext(guiGraphics);
-    //$$     screen.render(context, mouseX, mouseY, partialTicks);
-    //#if MC<12105
-    //$$     RenderUtil.restoreGlState();
-    //#endif
-    //$$ }
-    //$$
-    //$$ public void renderBackground(@NotNull GuiRenderContext context) {
-    //$$
-    //#if MC>=12106
-    //$$     context.flush();
-    //#endif
-    //$$
-    //$$     super.renderBackground(context.getMcContext(), lastMouseX, lastMouseY, lastPartialTicks);
-    //$$
-    //#if MC>=12102
-    //$$     context.flush();
-    //#endif
-    //$$
-    //$$ }
-    //#else
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
+        //#if MC<12105
         RenderUtil.preserveGlState();
+        //#endif
         lastMouseX = mouseX;
         lastMouseY = mouseY;
         lastPartialTicks = partialTicks;
         GuiRenderContext context = new GuiRenderContext(guiGraphics);
         screen.render(context, mouseX, mouseY, partialTicks);
+        //#if MC<12105
         RenderUtil.restoreGlState();
+        //#endif
     }
 
     public void renderBackground(@NotNull GuiRenderContext context) {
+        //#if MC>=12106
+        //$$ context.flush();
+        //#endif
         super.renderBackground(context.getMcContext(), lastMouseX, lastMouseY, lastPartialTicks);
-        RenderUtil.restoreGlState(true);
+        context.flush();
     }
-    //#endif
 
 //    @Override
 //    protected void updateNarratedWidget(@NotNull NarrationElementOutput narrationOutput) {
@@ -315,22 +289,12 @@ public final class ScreenWrapper
     ) {
         //#if MC>=12106
         //$$ context.getMcContext().setTooltipForNextFrame(
-        //$$         Language.getInstance().getVisualOrder(
-        //$$                 new ArrayList<>(
-        //$$                         RenderUtil.getTextConverter().convert(tooltip.getText())
-        //$$                 )
-        //$$         ),
+        //$$         tooltip.getLines(),
         //$$         tooltip.getX(),
         //$$         tooltip.getY()
         //$$ );
         //#else
-        setTooltipForNextRenderPass(
-                Language.getInstance().getVisualOrder(
-                        new ArrayList<>(
-                                RenderUtil.getTextConverter().convert(tooltip.getText())
-                        )
-                )
-        );
+        setTooltipForNextRenderPass(tooltip.getLines());
         //#endif
     }
 

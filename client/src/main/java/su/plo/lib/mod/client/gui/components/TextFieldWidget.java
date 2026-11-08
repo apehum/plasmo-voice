@@ -12,6 +12,7 @@ import su.plo.lib.mod.client.gui.narration.NarrationOutput;
 import su.plo.lib.mod.client.gui.widget.GuiAbstractWidget;
 import su.plo.lib.mod.client.render.Colors;
 import su.plo.lib.mod.client.render.RenderUtil;
+import su.plo.lib.mod.client.render.gui.GuiCursor;
 import su.plo.lib.mod.client.render.gui.GuiRenderContext;
 import su.plo.slib.api.chat.component.McTextComponent;
 
@@ -22,10 +23,6 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import su.plo.lib.mod.client.gui.widget.GuiWidgetTexture;
-
-//#if MC>=12109
-//$$ import com.mojang.blaze3d.platform.cursor.CursorTypes;
-//#endif
 
 //#if MC>=26.3
 //$$ import com.mojang.blaze3d.platform.TextInputManager;
@@ -198,7 +195,7 @@ public class TextFieldWidget extends GuiAbstractWidget {
             int inputX = Mth.floor(mouseX) - x;
             if (bordered) inputX -= 4;
 
-            String visibileString = RenderUtil.stringToWidth(value.substring(displayPosition), getInnerWidth());
+            String visibileString = RenderUtil.stringToWidth(value.substring(displayPosition), getInnerWidth(), false, "");
             moveCursorTo(RenderUtil.stringToWidth(visibileString, inputX, false, "").length() + displayPosition);
             return true;
         } else {
@@ -240,8 +237,7 @@ public class TextFieldWidget extends GuiAbstractWidget {
         if (isBordered()) {
             GuiWidgetTexture sprite = isFocused() ? GuiWidgetTexture.TEXT_FIELD_ACTIVE : GuiWidgetTexture.TEXT_FIELD;
 
-            context.blitSprite(sprite, x, y, 0, 0, width / 2, height);
-            context.blitSprite(sprite, x + width / 2, y, sprite.getSpriteWidth() - width / 2, 0, width / 2, height);
+            context.blitSprite(sprite, x, y, width, height);
         }
 
         Color color = isEditable() ? textColor : textColorUneditable;
@@ -262,7 +258,7 @@ public class TextFieldWidget extends GuiAbstractWidget {
         String visibleText = isCursorVisible ? text.substring(0, cursorIndex) : text;
 
         if (!text.isEmpty()) {
-            currentX = RenderUtil.getStringX(RenderUtil.getFormattedString(formatter.apply(visibleText, displayPosition)), textX, true);
+            currentX = textX + RenderUtil.getTextWidth(formatter.apply(visibleText, displayPosition)) + 1;
         }
 
         boolean shouldDrawCursor = cursorPosition < value.length() || value.length() >= maxLength;
@@ -323,11 +319,9 @@ public class TextFieldWidget extends GuiAbstractWidget {
             }
         }
 
-        //#if MC>=12109
-        //$$ if (isHovered()) {
-        //$$     context.requestCursor(CursorTypes.IBEAM);
-        //$$ }
-        //#endif
+        if (isHovered()) {
+            context.requestCursor(GuiCursor.IBEAM);
+        }
     }
 
     private void renderHighlight(@NotNull GuiRenderContext context, int x0, int y0, int x1, int y1) {
@@ -506,6 +500,13 @@ public class TextFieldWidget extends GuiAbstractWidget {
         return offsetByCodepoints(value, cursorPosition, offset);
     }
 
+    @Override
+    public void setWidth(int width) {
+        super.setWidth(width);
+        this.displayPosition = 0;
+        setHighlightPos(highlightPosition);
+    }
+
     public int getInnerWidth() {
         return isBordered() ? width - 8 : width;
     }
@@ -527,10 +528,10 @@ public class TextFieldWidget extends GuiAbstractWidget {
         }
 
         int innerWidth = getInnerWidth();
-        String string = RenderUtil.stringToWidth(value.substring(displayPosition), innerWidth);
+        String string = RenderUtil.stringToWidth(value.substring(displayPosition), innerWidth, false, "");
         int l = string.length() + displayPosition;
         if (highlightPosition == displayPosition) {
-            this.displayPosition -= RenderUtil.stringToWidth(value, innerWidth, true).length();
+            this.displayPosition -= RenderUtil.stringToWidth(value, innerWidth, true, "").length();
         }
 
         if (highlightPosition > l) {

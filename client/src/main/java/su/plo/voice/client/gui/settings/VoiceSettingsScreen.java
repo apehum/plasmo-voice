@@ -3,6 +3,7 @@ package su.plo.voice.client.gui.settings;
 import com.mojang.blaze3d.platform.InputConstants;
 import kotlin.text.StringsKt;
 import su.plo.lib.mod.client.gui.TooltipData;
+import su.plo.lib.mod.client.gui.components.AbstractSlider;
 import su.plo.lib.mod.client.render.Colors;
 import su.plo.lib.mod.client.render.gui.GuiRenderContext;
 import su.plo.slib.api.chat.component.McTextComponent;
@@ -31,8 +32,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static su.plo.voice.client.extension.TextKt.getStringSplitToWidth;
-
 //#if MC<12105
 import com.mojang.blaze3d.systems.RenderSystem;
 //#endif
@@ -58,12 +57,16 @@ public final class VoiceSettingsScreen extends GuiScreen implements GuiWidgetLis
     @Setter
     private @Nullable TooltipData tooltip;
 
-    @Setter
-    private boolean preventEscClose;
-
     private int renderCount;
 
     private final List<Runnable> deferredRenders = new ArrayList<>();
+
+    @Getter
+    private @Nullable GuiWidgetListener overlay;
+    @Getter
+    private int mouseX;
+    @Getter
+    private int mouseY;
 
     public VoiceSettingsScreen(@NotNull BaseVoiceClient voiceClient) {
         this.voiceClient = voiceClient;
@@ -168,21 +171,18 @@ public final class VoiceSettingsScreen extends GuiScreen implements GuiWidgetLis
         return title;
     }
 
-    @Override
-    public boolean shouldCloseOnEsc() {
-        if (preventEscClose) {
-            this.preventEscClose = false;
-            return false;
-        }
-
-        return true;
-    }
-
     // GuiWidget impl
     @Override
     public void render(@NotNull GuiRenderContext context, int mouseX, int mouseY, float delta) {
         if (renderCount < 5) renderCount++;
         this.tooltip = null;
+        this.mouseX = mouseX;
+        this.mouseY = mouseY;
+
+        if (overlay != null || isSliderDragging() || isTabScrolling()) {
+            mouseX = -1;
+            mouseY = -1;
+        }
 
         //#if MC<12105
         RenderSystem.defaultBlendFunc();
@@ -276,6 +276,23 @@ public final class VoiceSettingsScreen extends GuiScreen implements GuiWidgetLis
 
     public void deferredRender(@NotNull Runnable render) {
         deferredRenders.add(render);
+    }
+
+    public void setOverlay(@Nullable GuiWidgetListener overlay) {
+        this.overlay = overlay;
+    }
+
+    private boolean isSliderDragging() {
+        return navigation.getActiveTab()
+                .map(TabWidget::getFocusedWidget)
+                .filter(widget -> widget instanceof AbstractSlider && ((AbstractSlider) widget).isDragging())
+                .isPresent();
+    }
+
+    private boolean isTabScrolling() {
+        return navigation.getActiveTab()
+                .filter(TabWidget::isScrolling)
+                .isPresent();
     }
 
     private McTextComponent getSettingsTitle() {

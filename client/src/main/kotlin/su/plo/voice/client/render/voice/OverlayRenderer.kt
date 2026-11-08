@@ -4,10 +4,10 @@ import com.google.common.collect.Lists
 import com.google.common.collect.Maps
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.util.StringDecomposer
 import su.plo.lib.mod.extensions.isHudHidden
 import su.plo.lib.mod.client.ResourceLocationUtil
 import su.plo.lib.mod.client.render.Colors
-import su.plo.lib.mod.client.render.Colors.withAlpha
 import su.plo.lib.mod.client.render.LazyGlState
 import su.plo.lib.mod.client.render.RenderUtil
 import su.plo.lib.mod.client.render.gui.GuiRenderContext
@@ -21,6 +21,7 @@ import su.plo.voice.api.client.config.overlay.OverlayPosition
 import su.plo.voice.api.client.config.overlay.OverlaySourceState
 import su.plo.voice.client.config.VoiceClientConfig
 import su.plo.voice.client.event.HudRenderEvent
+import su.plo.voice.client.extension.toMinecraft
 import su.plo.voice.proto.data.audio.source.DirectSourceInfo
 import su.plo.voice.proto.data.audio.source.PlayerSourceInfo
 import su.plo.voice.proto.data.audio.source.SourceInfo
@@ -159,8 +160,7 @@ class OverlayRenderer(
             y += (ENTRY_HEIGHT + 1) * index
         }
 
-//        int backgroundColor = minecraft.getOptions().getBackgroundColor(Integer.MIN_VALUE);
-        val backgroundColor = BACKGROUND_COLOR
+        val backgroundColor = Color(Minecraft.getInstance().options.getBackgroundColor(0.25f), true)
 
         // render helm
         if (overlayStyle.hasSkin) {
@@ -181,7 +181,7 @@ class OverlayRenderer(
         }
 
         // render text
-        if (overlayStyle.hasName && RenderUtil.getFormattedString(sourceName).isNotBlank()) {
+        if (overlayStyle.hasName && StringDecomposer.getPlainText(sourceName.toMinecraft()).isNotBlank()) {
             if (position.isRight) {
                 x -= textWidth + 1
             }
@@ -324,8 +324,6 @@ class OverlayRenderer(
     companion object {
         private const val ENTRY_HEIGHT = 16
         private const val MAX_TEXT_WIDTH = 40
-
-        private val BACKGROUND_COLOR = Color.BLACK.withAlpha(0.25f)
     }
 }
 

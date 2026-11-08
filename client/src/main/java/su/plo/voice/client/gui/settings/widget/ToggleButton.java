@@ -6,12 +6,9 @@ import org.jetbrains.annotations.Nullable;
 import su.plo.config.entry.ConfigEntry;
 import su.plo.lib.mod.client.gui.widget.GuiAbstractWidget;
 import su.plo.lib.mod.client.gui.widget.GuiWidgetTexture;
+import su.plo.lib.mod.client.render.gui.GuiCursor;
 import su.plo.lib.mod.client.render.gui.GuiRenderContext;
 import su.plo.slib.api.chat.component.McTextComponent;
-
-//#if MC>=12109
-//$$ import com.mojang.blaze3d.platform.cursor.CursorTypes;
-//#endif
 
 public final class ToggleButton extends GuiAbstractWidget {
 
@@ -56,7 +53,7 @@ public final class ToggleButton extends GuiAbstractWidget {
 
     @Override
     public boolean keyPressed(int keyCode, int modifiers) {
-        if (!active || !visible) return false;
+        if (!active || !visible || !isFocused()) return false;
 
         if (keyCode != InputConstants.KEY_RETURN && keyCode != InputConstants.KEY_SPACE && keyCode != InputConstants.KEY_NUMPADENTER) return false;
 
@@ -74,11 +71,9 @@ public final class ToggleButton extends GuiAbstractWidget {
     public void render(@NotNull GuiRenderContext context, int mouseX, int mouseY, float delta) {
         super.render(context, mouseX, mouseY, delta);
 
-        //#if MC>=12109
-        //$$ if (isHovered()) {
-        //$$     context.requestCursor(isActive() ? CursorTypes.POINTING_HAND : CursorTypes.NOT_ALLOWED);
-        //$$ }
-        //#endif
+        if (isHovered()) {
+            context.requestCursor(isActive() ? GuiCursor.POINTING_HAND : GuiCursor.NOT_ALLOWED);
+        }
     }
 
     @Override
@@ -92,8 +87,7 @@ public final class ToggleButton extends GuiAbstractWidget {
             sprite = GuiWidgetTexture.BUTTON_DEFAULT;
         }
 
-        context.blitSprite(sprite, x0, y, 0, 0, 4, 20);
-        context.blitSprite(sprite, x0 + 4, y, sprite.getSpriteWidth() - 4, 0, 4, 20);
+        context.blitSprite(sprite, x0, y, 8, 20);
     }
 
     public void invertToggle() {

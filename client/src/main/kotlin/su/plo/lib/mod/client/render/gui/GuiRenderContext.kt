@@ -2,13 +2,13 @@ package su.plo.lib.mod.client.render.gui
 
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.util.FormattedCharSequence
 import su.plo.lib.mod.client.gui.widget.GuiWidgetTexture
 import su.plo.lib.mod.client.render.RenderUtil
 import su.plo.lib.mod.client.render.ScissorState
 import su.plo.lib.mod.client.render.pipeline.RenderPipeline
 import su.plo.lib.mod.client.render.pipeline.RenderPipelines
 import su.plo.slib.api.chat.component.McTextComponent
-import su.plo.voice.client.extension.getStringSplitToWidth
 
 import java.awt.Color
 
@@ -22,7 +22,12 @@ import java.awt.Color
 //$$ import net.minecraft.util.ARGB
 //$$ import su.plo.voice.client.mixin.accessor.GuiGraphicsAccessor
 //#else
+import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
+//#endif
+
+//#if MC>=12102 && MC<12106
+//$$ import net.minecraft.client.renderer.RenderType
 //#endif
 
 class GuiRenderContext(
@@ -53,7 +58,7 @@ class GuiRenderContext(
         //$$     mcContext.disableScissor()
         //$$ }
         //#else
-        ScissorState.applyScissorState(state)
+        ScissorState.applyScissorState(scissorStack.lastOrNull())
         //#endif
     }
 
@@ -236,79 +241,24 @@ class GuiRenderContext(
         //#endif
     }
 
-    @JvmOverloads
     fun blitSprite(
         sprite: GuiWidgetTexture,
         x: Int,
         y: Int,
-        u: Int,
-        v: Int,
         width: Int,
         height: Int,
-        renderPipeline: RenderPipeline = RenderPipelines.GUI_TEXTURE,
     ) {
         //#if MC>=12106
-        //$$ mcContext.blit(
-        //$$     renderPipeline.mcRenderPipeline,
-        //$$     sprite.location,
-        //$$     x,
-        //$$     y,
-        //$$     (u + sprite.u).toFloat(),
-        //$$     (v + sprite.v).toFloat(),
-        //$$     width,
-        //$$     height,
-        //$$     sprite.textureWidth,
-        //$$     sprite.textureHeight
-        //$$ )
+        //$$ mcContext.blitSprite(RenderPipelines.GUI_TEXTURE.mcRenderPipeline, sprite.location, x, y, width, height)
+        //#elseif MC>=12102
+        //$$ RenderSystem.setShaderColor(1F, 1F, 1F, 1F)
+        //$$ mcContext.blitSprite(RenderType::guiTextured, sprite.location, x, y, width, height)
+        //$$ mcContext.flush()
         //#else
-        RenderUtil.bindTexture(0, sprite.location)
-        RenderUtil.blitSprite(stack, sprite, x, y, u, v, width, height)
-        //#endif
-    }
-
-    @JvmOverloads
-    fun blitColorSprite(
-        sprite: GuiWidgetTexture,
-        x: Int,
-        y: Int,
-        u: Int,
-        v: Int,
-        width: Int,
-        height: Int,
-        color: Color,
-        renderPipeline: RenderPipeline = RenderPipelines.GUI_TEXTURE_COLOR,
-    ) {
-        //#if MC>=12106
-        //$$ mcContext.blit(
-        //$$     renderPipeline.mcRenderPipeline,
-        //$$     sprite.location,
-        //$$     x,
-        //$$     y,
-        //$$     (u + sprite.u).toFloat(),
-        //$$     (v + sprite.v).toFloat(),
-        //$$     width,
-        //$$     height,
-        //$$     sprite.textureWidth,
-        //$$     sprite.textureHeight,
-        //$$     ARGB.color(color.alpha, color.red, color.green, color.blue),
-        //$$ )
-        //#else
-        RenderUtil.bindTexture(0, sprite.location)
-        RenderUtil.blitColorSprite(
-            stack,
-            renderPipeline,
-            sprite,
-            x,
-            y,
-            u,
-            v,
-            width,
-            height,
-            color.red,
-            color.green,
-            color.blue,
-            color.alpha,
-        )
+        RenderSystem.setShaderColor(1F, 1F, 1F, 1F)
+        RenderSystem.enableBlend()
+        mcContext.blitSprite(sprite.location, x, y, width, height)
+        RenderSystem.disableBlend()
         //#endif
     }
 
@@ -320,7 +270,32 @@ class GuiRenderContext(
         color: Color,
         dropShadow: Boolean = true,
         seeThrough: Boolean = false,
-    ): Int = drawString(RenderUtil.getFormattedString(text), x, y, color, dropShadow, seeThrough)
+    ): Int = drawString(RenderUtil.getVisualOrderText(text), x, y, color, dropShadow, seeThrough)
+
+    @JvmOverloads
+    fun drawString(
+        text: FormattedCharSequence,
+        x: Int,
+        y: Int,
+        color: Color,
+        dropShadow: Boolean = true,
+        seeThrough: Boolean = false,
+    ): Int {
+        //#if MC>=12106
+        //$$ mcContext.drawString(
+        //$$     Minecraft.getInstance().font,
+        //$$     text,
+        //$$     x,
+        //$$     y,
+        //$$     color.rgb,
+        //$$     dropShadow
+        //$$ )
+        //$$
+        //$$ return RenderUtil.getStringX(text, x, dropShadow)
+        //#else
+        return RenderUtil.drawString(stack, text, x, y, color.rgb, dropShadow, seeThrough)
+        //#endif
+    }
 
     @JvmOverloads
     fun drawString(
@@ -354,7 +329,7 @@ class GuiRenderContext(
         y: Int,
         color: Color,
         dropShadow: Boolean = true,
-    ): Int = drawCenteredString(RenderUtil.getFormattedString(text), x, y, color, dropShadow)
+    ): Int = drawCenteredString(RenderUtil.getVisualOrderText(text), x, y, color, dropShadow)
 
     @JvmOverloads
     fun drawCenteredString(
@@ -372,6 +347,21 @@ class GuiRenderContext(
     )
 
     @JvmOverloads
+    fun drawCenteredString(
+        text: FormattedCharSequence,
+        x: Int,
+        y: Int,
+        color: Color,
+        dropShadow: Boolean = true,
+    ): Int = drawString(
+        text,
+        x - RenderUtil.getTextWidth(text) / 2,
+        y,
+        color,
+        dropShadow,
+    )
+
+    @JvmOverloads
     fun drawStringMultiLineCentered(
         text: McTextComponent,
         width: Int,
@@ -380,17 +370,15 @@ class GuiRenderContext(
         color: Color,
         dropShadow: Boolean = true,
     ): Int {
-        val formattedText = RenderUtil.getFormattedString(text)
-
-        val lines = getStringSplitToWidth(formattedText, width.toFloat(), true, true)
+        val lines = RenderUtil.splitLines(text, width)
         val lineHeight = RenderUtil.getFontHeight()
 
-        lines.forEachIndexed { index, lineText ->
+        lines.forEachIndexed { index, line ->
             val lineY = (lineHeight + yGap) * index
 
-            drawString(
-                lineText,
-                width / 2 - RenderUtil.getStringWidth(lineText) / 2,
+            drawCenteredString(
+                line,
+                width / 2,
                 y + lineY + lineHeight,
                 color,
                 dropShadow
@@ -409,16 +397,14 @@ class GuiRenderContext(
         width: Int,
         dropShadow: Boolean = true,
     ): Int  {
-        val formattedText = RenderUtil.getFormattedString(text)
-
-        val lines = getStringSplitToWidth(formattedText, width.toFloat(), true, true)
+        val lines = RenderUtil.splitLines(text, width)
         val lineHeight = RenderUtil.getFontHeight()
 
-        lines.forEachIndexed { index, lineText ->
+        lines.forEachIndexed { index, line ->
             val lineY = lineHeight * index
 
             drawString(
-                lineText,
+                line,
                 x,
                 y + lineY + lineHeight - 1,
                 color,
@@ -439,7 +425,7 @@ class GuiRenderContext(
         dropShadow: Boolean = true,
     ) {
         drawString(
-            RenderUtil.getOrderedString(text, width),
+            RenderUtil.getTruncatedText(text, width),
             x,
             y,
             color,
@@ -457,7 +443,7 @@ class GuiRenderContext(
         dropShadow: Boolean = true,
     ) {
         drawCenteredString(
-            RenderUtil.getOrderedString(text, width),
+            RenderUtil.getTruncatedText(text, width),
             x,
             y,
             color,
@@ -500,4 +486,10 @@ class GuiRenderContext(
     //$$     mcContext.requestCursor(cursorType)
     //$$ }
     //#endif
+
+    fun requestCursor(cursor: GuiCursor) {
+        //#if MC>=12109
+        //$$ mcContext.requestCursor(cursor.mc())
+        //#endif
+    }
 }

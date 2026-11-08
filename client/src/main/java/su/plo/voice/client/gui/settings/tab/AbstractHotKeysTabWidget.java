@@ -10,6 +10,7 @@ import su.plo.voice.client.config.VoiceClientConfig;
 import su.plo.voice.client.config.hotkey.HotkeyConfigEntry;
 import su.plo.voice.client.gui.settings.VoiceSettingsScreen;
 import su.plo.voice.client.gui.settings.widget.HotKeyWidget;
+import su.plo.voice.client.gui.settings.widget.OptionWidget;
 
 public abstract class AbstractHotKeysTabWidget extends TabWidget {
 
@@ -37,15 +38,11 @@ public abstract class AbstractHotKeysTabWidget extends TabWidget {
     }
 
     public void setFocusedHotKey(@Nullable HotKeyWidget focusedHotKey) {
-        if (this.focusedHotKey != null && focusedHotKey == null) {
-            parent.setPreventEscClose(true);
-        }
-
         this.focusedHotKey = focusedHotKey;
         hotKeys.resetPressedStates();
     }
 
-    protected OptionEntry<HotKeyWidget> createHotKey(@NotNull String translatable,
+    protected OptionWidget<HotKeyWidget> createHotKey(@NotNull String translatable,
                                                      @Nullable String tooltipTranslatable,
                                                      @NotNull HotkeyConfigEntry entry) {
         HotKeyWidget keyBinding = new HotKeyWidget(
@@ -57,7 +54,8 @@ public abstract class AbstractHotKeysTabWidget extends TabWidget {
                 20
         );
 
-        return new OptionEntry<>(
+        return new OptionWidget<>(
+                parent,
                 McTextComponent.translatable(translatable),
                 keyBinding,
                 entry,

@@ -1,6 +1,7 @@
 package su.plo.voice.client.gui.settings;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.util.FormattedCharSequence;
 import org.jetbrains.annotations.NotNull;
 import su.plo.lib.mod.client.MinecraftUtil;
 import su.plo.lib.mod.client.gui.components.Button;
@@ -12,10 +13,11 @@ import su.plo.lib.mod.client.render.gui.GuiRenderContext;
 import su.plo.slib.api.chat.component.McTextComponent;
 import su.plo.slib.api.chat.style.McTextStyle;
 import su.plo.voice.api.client.event.socket.UdpClientClosedEvent;
-import su.plo.voice.api.client.event.socket.UdpClientConnectedEvent;
 import su.plo.voice.api.client.event.socket.UdpClientTimedOutEvent;
 import su.plo.voice.api.event.EventSubscribe;
 import su.plo.voice.client.BaseVoiceClient;
+
+import java.util.List;
 
 public final class VoiceNotAvailableScreen extends GuiScreen {
 
@@ -39,11 +41,10 @@ public final class VoiceNotAvailableScreen extends GuiScreen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        String formattedMessage = RenderUtil.getFormattedString(message);
-        String[] messageLines = formattedMessage.split("\n");
+        List<FormattedCharSequence> messageLines = RenderUtil.splitLines(message, getWidth());
 
-        if (messageLines.length == 3 && button == InputConstants.MOUSE_BUTTON_LEFT) {
-            int lineWidth = RenderUtil.getStringWidth(messageLines[2]);
+        if (messageLines.size() == 3 && button == InputConstants.MOUSE_BUTTON_LEFT) {
+            int lineWidth = RenderUtil.getTextWidth(messageLines.get(2));
             int lineHeight = RenderUtil.getFontHeight();
             float x = (float) (getWidth() / 2 - lineWidth / 2);
 
@@ -100,6 +101,13 @@ public final class VoiceNotAvailableScreen extends GuiScreen {
         super.render(context, mouseX, mouseY, delta);
     }
 
+    @Override
+    public void tick() {
+        if (voiceClient.getUdpClientManager().isConnected() && voiceClient.getServerInfo().isPresent()) {
+            VoiceScreens.INSTANCE.openSettings(voiceClient);
+        }
+    }
+
     public void setNotAvailable() {
         this.message = McTextComponent.translatable("gui.plasmovoice.not_available");
     }
@@ -120,17 +128,8 @@ public final class VoiceNotAvailableScreen extends GuiScreen {
     }
 
     @EventSubscribe
-    public void onConnect(@NotNull UdpClientConnectedEvent event) {
-        VoiceScreens.INSTANCE.openSettings(voiceClient);
-    }
-
-    @EventSubscribe
     public void onTimedOut(@NotNull UdpClientTimedOutEvent event) {
-        if (event.isTimedOut()) {
-            setConnecting();
-        } else {
-            VoiceScreens.INSTANCE.openNotAvailable(voiceClient);
-        }
+        if (event.isTimedOut()) setConnecting();
     }
 
     @EventSubscribe
